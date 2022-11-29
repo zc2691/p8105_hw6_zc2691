@@ -1,0 +1,118 @@
+---
+title: "p8105_hw6_zc2691"
+author: "Zhaohua Chunyu"
+date: "2022-11-29"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(modelr)
+library(mgcv)
+library(viridis)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+```
+
+## Problem 1
+
+
+
+## Problem 2
+```{r}
+homicide_df = read_csv("data/homicide-data.csv")
+```
+
+Create `city_state` and obtain the total number of homicides and the number of unsolved homicides
+
+```{r}
+homicide_df = 
+  homicide_df %>% 
+  mutate(city_state = str_c(city, "_", state)) %>% 
+  filter(
+    !city_state %in% c("Dallas_TX", "Phoenix_AZ", "Kansas City_MO", "Tulsa_AL"),
+    victim_race %in% c("White", "Black")
+  ) %>% 
+  mutate (is_resolved = disposition == "Closed by arrest",
+          victim_age = as.numeric(victim_age))
+```
+
+```{r}
+baltimore_fit = 
+  homicide_df %>% 
+  filter(city_state == "Baltimore_MD") %>%
+  mutate(is_resolved = as.numeric(is_resolved)) %>% 
+  glm(is_resolved ~ victim_age + victim_sex + victim_race, data = ., family = "binomial") %>% 
+  broom::tidy()  
+
+baltimore_fit_log_result = 
+  baltimore_fit %>% 
+  filter(term == "victim_sexMale") %>% 
+  mutate(OR_estimate = exp(estimate),
+         OR_ci_lower = exp(estimate + qnorm(0.025) * std.error),
+         OR_ci_upper = exp(estimate + qnorm(0.975)* std.error)) %>% 
+  select(term, OR_estimate, OR_ci_lower, OR_ci_upper)  
+
+baltimore_fit_log_result %>% knitr::kable(digits = 3)
+```
+
+
+```{r}
+all_city_nested = 
+  homicide_df %>% 
+  mutate(is_resolved = as.numeric(is_resolved)) %>% 
+  select(city_state, is_resolved, victim_age, victim_sex, victim_race) %>% 
+  nest(data = is_resolved:victim_race)
+
+fit_log_result = 
+  all_city_nested %>% 
+  mutate(
+    fit = purrr::map(.x = data, ~glm(is_resolved ~ victim_age + victim_sex + victim_race, data = .x, family = "binomial")),
+    result = purrr::map(fit, broom::tidy)
+  ) %>% 
+  unnest(result) %>% 
+  filter(term == "victim_sexMale") %>% 
+  mutate(OR_estimate = exp(estimate),
+         OR_ci_lower = exp(estimate + qnorm(0.025) * std.error),
+         OR_ci_upper = exp(estimate + qnorm(0.975)* std.error)) %>% 
+  select(city_state, OR_estimate, OR_ci_lower, OR_ci_upper)  
+
+fit_log_result %>% knitr::kable(digits = 3)
+```
+
+```{r}
+fit_log_result %>% 
+  mutate(CI = OR_ci_upper - OR_ci_lower,
+         city_state = fct_reorder(city_state, OR_estimate)) %>% 
+  ggplot(aes(x = city_state, y = OR_estimate)) +
+  geom_point() +
+  geom_errorbar(aes(x = city_state, ymin = OR_ci_lower, ymax = OR_ci_upper))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 6)) +
+   labs(
+    title = "Logistic Estimated Odds Ratio for Solving Homicides (Male vs. Female) for Each City with 95% CI",
+    x = "City, State",
+    y = "Logistic Estimated Odds Ratio (Male vs. Female)")
+```
+
+
+
+
+## Problem 3
+
+
+
